@@ -14,8 +14,9 @@ const statusEl = el('status');
 const MUTED = '#c9c9d2';
 const MIN_HUB = 3;
 
-const state = { nodeSize: 1, colorClusters: true, edgeOpacity: 0.55, minDegree: 0, active: null };
+const state = { nodeSize: 1, colorClusters: true, edgeOpacity: 0.55, minDegree: 0, active: null, pinned: null };
 let baseStatus = '';
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function main() {
   const data = await (await fetch('./graph.json')).json();
@@ -186,7 +187,42 @@ async function main() {
     el('v-deg').textContent = el('minDegree').value;
   }
 
-  // ---------- hover + search ----------
+  // ---------- selection + related-lessons panel ----------
+  const selectedEl = el('selected');
+  function renderRelated(id) {
+    const a = graph.getNodeAttributes(id);
+    const neighbors = graph.neighbors(id)
+      .filter((n) => !graph.getNodeAttribute(n, 'isHub'))
+      .sort((x, y) => graph.degree(y) - graph.degree(x));
+    const rows = neighbors.map((n) => {
+      const na = graph.getNodeAttributes(n);
+      return `<li data-id="${encodeURIComponent(n)}"><span class="dot" style="background:${na.color}"></span>`
+        + `<span class="t" title="${esc(na.label)}">${esc(na.label)}</span>`
+        + `<a class="open" href="${esc(na.url)}" target="_blank" rel="noopener" title="باز کردن نوشته">↗</a></li>`;
+    }).join('');
+    selectedEl.innerHTML =
+      `<div class="sel-title">${esc(a.label)} <a href="${esc(a.url)}" target="_blank" rel="noopener">باز کردن ↗</a></div>`
+      + `<div class="sel-sub">${a.category ? esc(a.category) + ' · ' : ''}${neighbors.length.toLocaleString('fa-IR')} نوشتهٔ مرتبط</div>`
+      + `<ul>${rows || '<li class="t">بدون پیوند</li>'}</ul>`;
+    selectedEl.hidden = false;
+    selectedEl.querySelectorAll('li[data-id]').forEach((li) => {
+      li.addEventListener('click', (e) => {
+        if (e.target.closest('a.open')) return; // let the ↗ link open the post
+        selectNode(decodeURIComponent(li.getAttribute('data-id')), true);
+      });
+    });
+  }
+  function selectNode(id, focus) {
+    state.pinned = state.active = id;
+    if (focus) {
+      const p = renderer.getNodeDisplayData(id);
+      renderer.getCamera().animate({ x: p.x, y: p.y, ratio: 0.06 }, { duration: 500 });
+    }
+    renderer.refresh({ skipIndexation: true });
+    renderRelated(id);
+  }
+
+  // ---------- hover + click + search ----------
   renderer.on('enterNode', ({ node }) => {
     if (graph.getNodeAttribute(node, 'isHub')) return;
     state.active = node; container.style.cursor = 'pointer';
@@ -195,13 +231,13 @@ async function main() {
     statusEl.textContent = a.category ? `${a.label}  ·  ${a.category}` : a.label;
   });
   renderer.on('leaveNode', () => {
-    state.active = null; container.style.cursor = 'default';
+    state.active = state.pinned; container.style.cursor = 'default';
     renderer.refresh({ skipIndexation: true });
     statusEl.textContent = baseStatus;
   });
   renderer.on('clickNode', ({ node }) => {
-    const a = graph.getNodeAttributes(node);
-    if (!a.isHub && a.url) window.open(a.url, '_blank', 'noopener');
+    if (graph.getNodeAttribute(node, 'isHub')) return;
+    selectNode(node, false); // pin it + show related; use the panel's ↗ to open the post
   });
 
   const byLabel = new Map();
@@ -212,10 +248,7 @@ async function main() {
   });
   el('search').addEventListener('change', () => {
     const id = byLabel.get(el('search').value.trim());
-    if (!id) return;
-    const p = renderer.getNodeDisplayData(id);
-    renderer.getCamera().animate({ x: p.x, y: p.y, ratio: 0.06 }, { duration: 500 });
-    state.active = id; renderer.refresh({ skipIndexation: true });
+    if (id) selectNode(id, true);
   });
 
   // ---------- init ----------
