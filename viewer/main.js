@@ -82,6 +82,11 @@ async function main() {
   // ---------- cluster labels (DOM overlay at barycenters) ----------
   const labelState = { show: true, min: 15 };
   const labelEls = new Map();
+  const darken = (hex, f = 0.55) => {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+    return `rgb(${r},${g},${b})`;
+  };
   function buildLabels() {
     clustersEl.innerHTML = '';
     labelEls.clear();
@@ -90,7 +95,8 @@ async function main() {
       const d = document.createElement('div');
       d.className = 'cluster-label';
       d.textContent = cat;
-      d.style.fontSize = `${Math.max(11, Math.min(26, 9 + Math.sqrt(c.nodes.length)))}px`;
+      d.style.color = darken(c.color);           // tint the label with a darker shade of the cluster colour
+      d.style.fontSize = `${Math.max(12, Math.min(28, 10 + Math.sqrt(c.nodes.length)))}px`;
       clustersEl.appendChild(d);
       labelEls.set(cat, d);
     }

@@ -131,6 +131,20 @@ async function main() {
   // Remove hubs; keep real node positions.
   for (const c of main) graph.dropNode(HUB(c));
 
+  // Cluster-level data (Sigma "clusters" shape): one entry per category with its
+  // colour, member count, and barycenter (x,y) — computed from final node positions.
+  const cmap = new Map();
+  graph.forEachNode((id, a) => {
+    if (!a.category) return;
+    let c = cmap.get(a.category);
+    if (!c) { c = { key: a.category, label: a.category, color: colorOf.get(a.category) || MUTED, sumx: 0, sumy: 0, size: 0 }; cmap.set(a.category, c); }
+    c.sumx += a.x; c.sumy += a.y; c.size += 1;
+  });
+  const clusters = [...cmap.values()]
+    .map((c) => ({ key: c.key, label: c.label, color: c.color, size: c.size, x: round(c.sumx / c.size), y: round(c.sumy / c.size) }))
+    .sort((a, b) => b.size - a.size);
+  console.log(`[layout] ${clusters.length} clusters emitted`);
+
   // Emit.
   const out = {
     nodes: graph.mapNodes((id, a) => ({
@@ -140,6 +154,7 @@ async function main() {
       category: a.category, categories: a.categories,
     })),
     edges: graph.mapEdges((_e, _a, s, t) => ({ source: s, target: t })),
+    clusters,
   };
   const bad = out.nodes.filter((n) => !Number.isFinite(n.x) || !Number.isFinite(n.y)).length;
   if (bad) throw new Error(`${bad} nodes have non-finite coordinates`);
