@@ -1,0 +1,27 @@
+{
+  "name": "motamem-graph-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Obsidian-style link graph of motamem.org, sourced from the Internet Archive",
+  "scripts": {
+    "enumerate": "node src/enumerate.js",
+    "fetch": "node src/fetch.js",
+    "parse": "node src/parse.js",
+    "layout": "node src/layout.js",
+    "viewer:build": "esbuild viewer/main.js --bundle --minify --format=iife --outfile=public/app.js",
+    "serve": "node scripts/serve.js",
+    "build": "npm run enumerate && npm run fetch && npm run parse && npm run layout && npm run viewer:build"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "graphology-layout": "^0.6.1",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "sigma": "^3.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
