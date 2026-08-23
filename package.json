@@ -16,7 +16,6 @@
   "dependencies": {
     "cheerio": "^1.0.0",
     "graphology": "^0.26.0",
-    "graphology-communities-louvain": "^2.0.2",
     "graphology-layout": "^0.6.1",
     "graphology-layout-forceatlas2": "^0.10.1",
     "sigma": "^3.0.3"

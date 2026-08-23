@@ -1,77 +1,223 @@
-// Stage 5 — viewer: renders public/graph.json with Sigma.js. No layout is computed
-// here; x/y come baked in. Bundled by esbuild to public/app.js.
+// Stage 5 — viewer: renders public/graph.json with Sigma.js.
+// Obsidian-style: live ForceAtlas2 (web worker) driven by a controls panel, cluster
+// name labels floating at each cluster barycenter, and live display/filter knobs.
+// Positions come pre-baked from the build; the sim only runs when the user asks.
 
 import Graph from 'graphology';
 import Sigma from 'sigma';
+import FA2Layout from 'graphology-layout-forceatlas2/worker';
 
-const container = document.getElementById('graph');
-const statusEl = document.getElementById('status');
-const searchInput = document.getElementById('search');
-const searchList = document.getElementById('nodes');
+const el = (id) => document.getElementById(id);
+const container = el('graph');
+const clustersEl = el('clusters');
+const statusEl = el('status');
+const MUTED = '#c9c9d2';
+const MIN_HUB = 3;
+
+const state = { nodeSize: 1, colorClusters: true, edgeOpacity: 0.55, minDegree: 0, active: null };
+let baseStatus = '';
 
 async function main() {
-  const res = await fetch('./graph.json');
-  if (!res.ok) { statusEl.textContent = 'graph.json failed to load'; return; }
-  const data = await res.json();
+  const data = await (await fetch('./graph.json')).json();
 
   const graph = new Graph();
-  for (const n of data.nodes) graph.addNode(n.id, { ...n });
-  for (const e of data.edges) { if (!graph.hasEdge(e.source, e.target)) graph.addEdge(e.source, e.target); }
+  for (const n of data.nodes) graph.addNode(n.id, { ...n, baseSize: n.size });
+  for (const e of data.edges) if (!graph.hasEdge(e.source, e.target)) graph.addEdge(e.source, e.target, { weight: 1 });
+  graph.forEachNode((id) => graph.setNodeAttribute(id, 'degree', graph.degree(id)));
 
+  // Group nodes by category (for hubs + cluster labels).
+  const cats = new Map();
+  graph.forEachNode((id, a) => {
+    if (!a.category) return;
+    if (!cats.has(a.category)) cats.set(a.category, { nodes: [], color: a.color });
+    cats.get(a.category).nodes.push(id);
+  });
+
+  // Invisible cohesion hubs (rebuilt here so graph.json stays clean).
+  for (const [cat, c] of cats) {
+    if (c.nodes.length < MIN_HUB) continue;
+    const [cx, cy] = centroid(c.nodes);
+    const hid = `__hub__${cat}`;
+    graph.addNode(hid, { x: cx, y: cy, size: 0, isHub: true });
+    for (const id of c.nodes) graph.addEdge(hid, id, { weight: 4, isHub: true });
+  }
+
+  function centroid(ids) {
+    let x = 0, y = 0;
+    for (const id of ids) { x += graph.getNodeAttribute(id, 'x'); y += graph.getNodeAttribute(id, 'y'); }
+    return [x / ids.length, y / ids.length];
+  }
+
+  // ---------- Sigma ----------
   const renderer = new Sigma(graph, container, {
-    labelRenderedSizeThreshold: 8,           // hub/zoom adaptive: only big-enough nodes get labels
+    labelRenderedSizeThreshold: 8,
     labelFont: 'Vazirmatn, Tahoma, sans-serif',
     labelColor: { color: '#222' },
-    labelDensity: 0.6,
-    labelGridCellSize: 80,
-    defaultEdgeColor: '#e4e4ea',
+    defaultEdgeColor: `rgba(150,150,165,${state.edgeOpacity})`,
     zIndex: true,
   });
 
-  // ---- hover: highlight the node and its neighbors, fade the rest ----
-  let active = null;
-  const setActive = (node) => { active = node; renderer.refresh({ skipIndexation: true }); };
-
-  renderer.setSetting('nodeReducer', (node, attr) => {
-    if (!active) return attr;
-    if (node === active) return { ...attr, zIndex: 2, highlighted: true };
-    if (graph.areNeighbors(active, node)) return { ...attr, zIndex: 1 };
-    return { ...attr, color: '#e8e8ee', label: '', zIndex: 0 };
+  renderer.setSetting('nodeReducer', (node, a) => {
+    if (a.isHub) return { ...a, hidden: true };
+    const res = { ...a, size: a.baseSize * state.nodeSize };
+    if (!state.colorClusters) res.color = a.category ? '#9a9aa6' : MUTED;
+    if (state.minDegree && a.degree < state.minDegree) { res.hidden = true; return res; }
+    if (state.active) {
+      if (node === state.active) { res.zIndex = 2; res.highlighted = true; }
+      else if (graph.areNeighbors(state.active, node)) { res.zIndex = 1; }
+      else { res.color = '#e8e8ee'; res.label = ''; res.zIndex = 0; }
+    }
+    return res;
   });
-  renderer.setSetting('edgeReducer', (edge, attr) => {
-    if (!active) return attr;
-    return graph.hasExtremity(edge, active)
-      ? { ...attr, color: '#9aa', zIndex: 1 }
-      : { ...attr, hidden: true };
+  renderer.setSetting('edgeReducer', (edge, a) => {
+    if (graph.getEdgeAttribute(edge, 'isHub')) return { ...a, hidden: true };
+    if (state.active) {
+      return graph.hasExtremity(edge, state.active)
+        ? { ...a, color: '#8890b0', zIndex: 1 }
+        : { ...a, hidden: true };
+    }
+    return a;
   });
 
-  renderer.on('enterNode', ({ node }) => { container.style.cursor = 'pointer'; setActive(node); });
-  renderer.on('leaveNode', () => { container.style.cursor = 'default'; setActive(null); });
+  // ---------- cluster labels (DOM overlay at barycenters) ----------
+  const labelState = { show: true, min: 15 };
+  const labelEls = new Map();
+  function buildLabels() {
+    clustersEl.innerHTML = '';
+    labelEls.clear();
+    for (const [cat, c] of cats) {
+      if (c.nodes.length < labelState.min) continue;
+      const d = document.createElement('div');
+      d.className = 'cluster-label';
+      d.textContent = cat;
+      d.style.fontSize = `${Math.max(11, Math.min(26, 9 + Math.sqrt(c.nodes.length)))}px`;
+      clustersEl.appendChild(d);
+      labelEls.set(cat, d);
+    }
+  }
+  function placeLabels() {
+    clustersEl.style.display = labelState.show ? '' : 'none';
+    if (!labelState.show) return;
+    for (const [cat, d] of labelEls) {
+      const [x, y] = centroid(cats.get(cat).nodes);
+      const p = renderer.graphToViewport({ x, y });
+      d.style.left = `${p.x}px`;
+      d.style.top = `${p.y}px`;
+    }
+  }
+  renderer.on('afterRender', placeLabels);
+
+  // ---------- live ForceAtlas2 ----------
+  let layout = null, running = false;
+  const fa2Settings = () => ({
+    scalingRatio: Number(el('repel').value),
+    gravity: Number(el('gravity').value),
+    edgeWeightInfluence: 1,
+    barnesHutOptimize: true,
+    adjustSizes: true,
+    outboundAttractionDistribution: true,
+    slowDown: 2,
+  });
+  function applyWeights() {
+    const link = Number(el('link').value), coh = Number(el('cohesion').value);
+    graph.forEachEdge((e, a) => graph.setEdgeAttribute(e, 'weight', a.isHub ? coh : link));
+  }
+  function rebuildLayout() {
+    if (layout) { layout.kill(); layout = null; }
+    applyWeights();
+    try {
+      layout = new FA2Layout(graph, { settings: fa2Settings(), getEdgeWeight: 'weight' });
+      if (running) layout.start();
+    } catch (err) {
+      console.error('layout worker failed', err);
+      statusEl.textContent = 'شبیه‌سازی در دسترس نیست';
+    }
+  }
+  function setRunning(on) {
+    running = on;
+    const b = el('run');
+    b.classList.toggle('on', on);
+    b.textContent = on ? '⏸ توقف شبیه‌سازی' : '▶ اجرای شبیه‌سازی';
+    if (on) { if (!layout) rebuildLayout(); layout && layout.start(); }
+    else layout && layout.stop();
+  }
+  el('run').onclick = () => setRunning(!running);
+  el('reset').onclick = () => {
+    setRunning(false);
+    for (const n of data.nodes) { graph.setNodeAttribute(n.id, 'x', n.x); graph.setNodeAttribute(n.id, 'y', n.y); }
+    for (const [cat, c] of cats) {
+      const hid = `__hub__${cat}`;
+      if (!graph.hasNode(hid)) continue;
+      const [cx, cy] = centroid(c.nodes);
+      graph.setNodeAttribute(hid, 'x', cx); graph.setNodeAttribute(hid, 'y', cy);
+    }
+    renderer.refresh();
+  };
+
+  // ---------- controls ----------
+  const debounce = (fn, ms = 180) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const onForce = debounce(() => { running ? rebuildLayout() : setRunning(true); });
+  ['repel', 'gravity', 'link', 'cohesion'].forEach((id) =>
+    el(id).addEventListener('input', () => { updateVals(); onForce(); }));
+
+  el('nodeSize').addEventListener('input', () => { state.nodeSize = +el('nodeSize').value; updateVals(); renderer.refresh({ skipIndexation: true }); });
+  el('labelThreshold').addEventListener('input', () => { renderer.setSetting('labelRenderedSizeThreshold', +el('labelThreshold').value); updateVals(); });
+  el('edgeOpacity').addEventListener('input', () => { state.edgeOpacity = +el('edgeOpacity').value; renderer.setSetting('defaultEdgeColor', `rgba(150,150,165,${state.edgeOpacity})`); updateVals(); renderer.refresh({ skipIndexation: true }); });
+  el('colorClusters').addEventListener('change', () => { state.colorClusters = el('colorClusters').checked; renderer.refresh({ skipIndexation: true }); });
+  el('clusterLabels').addEventListener('change', () => { labelState.show = el('clusterLabels').checked; placeLabels(); });
+  el('clusterMin').addEventListener('input', () => { labelState.min = +el('clusterMin').value; updateVals(); buildLabels(); placeLabels(); });
+  el('minDegree').addEventListener('input', () => { state.minDegree = +el('minDegree').value; updateVals(); renderer.refresh({ skipIndexation: true }); });
+
+  function updateVals() {
+    el('v-repel').textContent = el('repel').value;
+    el('v-gravity').textContent = el('gravity').value;
+    el('v-link').textContent = el('link').value;
+    el('v-cohesion').textContent = el('cohesion').value;
+    el('v-size').textContent = `${el('nodeSize').value}×`;
+    el('v-label').textContent = el('labelThreshold').value;
+    el('v-edge').textContent = el('edgeOpacity').value;
+    el('v-clmin').textContent = el('clusterMin').value;
+    el('v-deg').textContent = el('minDegree').value;
+  }
+
+  // ---------- hover + search ----------
+  renderer.on('enterNode', ({ node }) => {
+    if (graph.getNodeAttribute(node, 'isHub')) return;
+    state.active = node; container.style.cursor = 'pointer';
+    renderer.refresh({ skipIndexation: true });
+    const a = graph.getNodeAttributes(node);
+    statusEl.textContent = a.category ? `${a.label}  ·  ${a.category}` : a.label;
+  });
+  renderer.on('leaveNode', () => {
+    state.active = null; container.style.cursor = 'default';
+    renderer.refresh({ skipIndexation: true });
+    statusEl.textContent = baseStatus;
+  });
   renderer.on('clickNode', ({ node }) => {
-    const url = graph.getNodeAttribute(node, 'url');
-    if (url) window.open(url, '_blank', 'noopener');
+    const a = graph.getNodeAttributes(node);
+    if (!a.isHub && a.url) window.open(a.url, '_blank', 'noopener');
   });
 
-  // ---- search: jump the camera to a post by title ----
   const byLabel = new Map();
-  graph.forEachNode((id, attr) => {
-    byLabel.set(attr.label, id);
-    const opt = document.createElement('option');
-    opt.value = attr.label;
-    searchList.appendChild(opt);
+  graph.forEachNode((id, a) => {
+    if (a.isHub) return;
+    byLabel.set(a.label, id);
+    const opt = document.createElement('option'); opt.value = a.label; el('nodes').appendChild(opt);
   });
-  searchInput.addEventListener('change', () => {
-    const id = byLabel.get(searchInput.value.trim());
+  el('search').addEventListener('change', () => {
+    const id = byLabel.get(el('search').value.trim());
     if (!id) return;
     const p = renderer.getNodeDisplayData(id);
-    renderer.getCamera().animate({ x: p.x, y: p.y, ratio: 0.08 }, { duration: 500 });
-    setActive(id);
+    renderer.getCamera().animate({ x: p.x, y: p.y, ratio: 0.06 }, { duration: 500 });
+    state.active = id; renderer.refresh({ skipIndexation: true });
   });
 
-  statusEl.textContent = `${graph.order.toLocaleString('fa-IR')} نوشته · ${graph.size.toLocaleString('fa-IR')} پیوند`;
+  // ---------- init ----------
+  buildLabels();
+  updateVals();
+  placeLabels();
+  baseStatus = `${data.nodes.length.toLocaleString('fa-IR')} نوشته · ${data.edges.length.toLocaleString('fa-IR')} پیوند · ${cats.size.toLocaleString('fa-IR')} خوشه`;
+  statusEl.textContent = baseStatus;
 }
 
-main().catch((err) => {
-  console.error(err);
-  statusEl.textContent = 'error: ' + err.message;
-});
+main().catch((err) => { console.error(err); statusEl.textContent = 'خطا: ' + err.message; });

@@ -5,33 +5,95 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>گراف متمم — نقشه پیوند نوشته‌ها</title>
   <style>
-    :root { --panel: rgba(255,255,255,.9); --ink:#222; --muted:#667; }
+    :root { --ink:#1e1e24; --muted:#6a6a78; --line:#e6e6ee; --accent:#6b7cff; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; overflow: hidden;
       font-family: Vazirmatn, Tahoma, "IRANSans", sans-serif; background: #fafafc; color: var(--ink); }
     #graph { position: absolute; inset: 0; }
+    #clusters { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+    .cluster-label {
+      position: absolute; transform: translate(50%, -50%); white-space: nowrap;
+      font-weight: 700; color: #2b2b34; text-shadow: 0 0 4px #fafafc, 0 0 4px #fafafc, 0 0 8px #fafafc;
+      pointer-events: none; transition: opacity .2s;
+    }
+
     #panel {
       position: absolute; top: 14px; right: 14px; z-index: 5;
-      background: var(--panel); backdrop-filter: blur(6px);
-      border: 1px solid #e3e3ea; border-radius: 12px; padding: 12px 14px;
-      box-shadow: 0 4px 20px rgba(0,0,0,.06); width: min(300px, 78vw);
+      width: min(300px, 82vw); max-height: calc(100vh - 28px); overflow-y: auto;
+      background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+      border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+      box-shadow: 0 6px 26px rgba(0,0,0,.08);
     }
     #panel h1 { font-size: 15px; margin: 0 0 8px; }
-    #search { width: 100%; padding: 8px 10px; border: 1px solid #d7d7e0; border-radius: 8px;
-      font: inherit; outline: none; }
-    #search:focus { border-color: #9aa8ff; }
-    #status { margin-top: 8px; font-size: 12px; color: var(--muted); }
-    #hint { margin-top: 6px; font-size: 11px; color: #99a; line-height: 1.7; }
+    #status { font-size: 12px; color: var(--muted); margin-bottom: 10px; min-height: 16px; }
+    #search { width: 100%; padding: 8px 10px; border: 1px solid #d9d9e3; border-radius: 9px; font: inherit; outline: none; }
+    #search:focus { border-color: var(--accent); }
+
+    details { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }
+    summary { cursor: pointer; font-size: 13px; font-weight: 600; list-style: none; padding: 4px 0; user-select: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "▾"; color: var(--muted); margin-left: 6px; font-size: 10px; }
+    details:not([open]) summary::before { content: "▸"; }
+
+    .row { margin: 9px 0; }
+    .row label { display: flex; justify-content: space-between; font-size: 12px; color: #444; margin-bottom: 3px; }
+    .row label .val { color: var(--accent); font-variant-numeric: tabular-nums; }
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 9px 0; cursor: pointer; }
+    .btns { display: flex; gap: 8px; margin-top: 10px; }
+    .btns button { flex: 1; padding: 7px 8px; border: 1px solid #d9d9e3; background: #fff; border-radius: 9px;
+      font: inherit; font-size: 12.5px; cursor: pointer; }
+    .btns button:hover { border-color: var(--accent); color: var(--accent); }
+    .btns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    #hint { margin-top: 10px; font-size: 11px; color: #99a; line-height: 1.8; border-top: 1px solid var(--line); padding-top: 8px; }
   </style>
 </head>
 <body>
   <div id="graph"></div>
+  <div id="clusters"></div>
   <div id="panel">
     <h1>نقشه نوشته‌های متمم</h1>
+    <div id="status">در حال بارگذاری…</div>
     <input id="search" list="nodes" placeholder="جستجوی عنوان نوشته…" autocomplete="off" />
     <datalist id="nodes"></datalist>
-    <div id="status">در حال بارگذاری…</div>
-    <div id="hint">روی گره‌ها حرکت کنید تا هم‌سایه‌ها روشن شوند · کلیک = رفتن به نوشته</div>
+
+    <details open>
+      <summary>نیروها</summary>
+      <div class="row"><label>دافعه (پخش‌شدگی) <span class="val" id="v-repel"></span></label>
+        <input type="range" id="repel" min="1" max="1500" step="10" value="120"></div>
+      <div class="row"><label>جاذبهٔ مرکز <span class="val" id="v-gravity"></span></label>
+        <input type="range" id="gravity" min="0" max="10" step="0.1" value="1"></div>
+      <div class="row"><label>قدرت پیوندها <span class="val" id="v-link"></span></label>
+        <input type="range" id="link" min="0.2" max="3" step="0.1" value="1"></div>
+      <div class="row"><label>هم‌بستگی خوشه‌ها <span class="val" id="v-cohesion"></span></label>
+        <input type="range" id="cohesion" min="0" max="12" step="0.5" value="4"></div>
+      <div class="btns">
+        <button id="run">▶ اجرای شبیه‌سازی</button>
+        <button id="reset">بازنشانی</button>
+      </div>
+    </details>
+
+    <details open>
+      <summary>نمایش</summary>
+      <div class="row"><label>اندازهٔ گره‌ها <span class="val" id="v-size"></span></label>
+        <input type="range" id="nodeSize" min="0.3" max="3" step="0.1" value="1"></div>
+      <div class="row"><label>آستانهٔ نمایش برچسب <span class="val" id="v-label"></span></label>
+        <input type="range" id="labelThreshold" min="1" max="24" step="1" value="8"></div>
+      <div class="row"><label>پررنگی پیوندها <span class="val" id="v-edge"></span></label>
+        <input type="range" id="edgeOpacity" min="0" max="1" step="0.05" value="0.55"></div>
+      <label class="check"><input type="checkbox" id="colorClusters" checked> رنگ‌آمیزی بر اساس خوشه</label>
+      <label class="check"><input type="checkbox" id="clusterLabels" checked> نمایش نام خوشه‌ها</label>
+      <div class="row"><label>حداقل اندازهٔ خوشه برای برچسب <span class="val" id="v-clmin"></span></label>
+        <input type="range" id="clusterMin" min="3" max="60" step="1" value="15"></div>
+    </details>
+
+    <details>
+      <summary>فیلتر</summary>
+      <div class="row"><label>حداقل تعداد پیوند <span class="val" id="v-deg"></span></label>
+        <input type="range" id="minDegree" min="0" max="30" step="1" value="0"></div>
+    </details>
+
+    <div id="hint">حرکت روی گره: روشن‌شدن هم‌سایه‌ها · کلیک: رفتن به نوشته · نیروها را تغییر دهید تا چیدمان زنده بازآرایی شود</div>
   </div>
   <script src="./app.js"></script>
 </body>
