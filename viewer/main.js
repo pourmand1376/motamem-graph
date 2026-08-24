@@ -28,6 +28,18 @@ let theme = THEMES.light;
 let baseStatus = '';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+function normalizeSearchText(text) {
+  return String(text)
+    .replace(/[‌‏]/g, '')
+    .replace(/[يى]/g, 'ی')
+    .replace(/ك/g, 'ک')
+    .replace(/[؟]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 // Scale a #rrggbb colour toward black (f<1) or white (f>1); clamps each channel to 0–255.
 function shade(hex, f) {
   const n = parseInt(hex.slice(1), 16);
@@ -71,9 +83,40 @@ async function main() {
 
   // Sorted [label, id] index — shared by both search boxes.
   const index = [];
-  graph.forEachNode((id, a) => { if (!a.isHub) index.push([a.label, id]); });
+  graph.forEachNode((id, a) => {
+    if (a.isHub) return;
+    index.push([a.label, id, normalizeSearchText(a.label)]);
+  });
   index.sort((x, y) => x[0].localeCompare(y[0], 'fa'));
   const byLabel = new Map(index.map(([label, id]) => [label, id]));
+
+  function searchHits(query) {
+    const q = normalizeSearchText(query);
+    if (!q) return [];
+
+    const exact = [];
+    const prefix = [];
+    const phrase = [];
+    const substring = [];
+    for (const [label, id, norm] of index) {
+      if (norm === q) {
+        exact.push([label, id]);
+        continue;
+      }
+      if (norm.startsWith(q + ' ')) {
+        prefix.push([label, id]);
+        continue;
+      }
+      if (norm.includes(' ' + q + ' ')) {
+        phrase.push([label, id]);
+        continue;
+      }
+      if (norm.includes(q)) {
+        substring.push([label, id]);
+      }
+    }
+    return [...exact, ...prefix, ...phrase, ...substring];
+  }
 
   // ---------- shared related-lessons rendering ----------
   // Builds the inner HTML for a node's related list; used by the map panel and the lite view.
@@ -116,12 +159,8 @@ async function main() {
     wireRelated(rel, (n) => { showLite(n); liteSelected.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   }
   function renderLiteResults(q) {
-    const query = q.trim().toLowerCase();
-    if (!query) { liteResults.innerHTML = ''; return; }
-    const hits = [];
-    for (const [label, id] of index) {
-      if (label.toLowerCase().includes(query)) { hits.push([label, id]); if (hits.length >= 40) break; }
-    }
+    const hits = searchHits(q).slice(0, 40);
+    if (!normalizeSearchText(q)) { liteResults.innerHTML = ''; return; }
     if (!hits.length) { liteResults.innerHTML = '<li class="empty">نوشته‌ای پیدا نشد.</li>'; return; }
     liteResults.innerHTML = hits.map(([label, id]) => {
       const color = graph.getNodeAttribute(id, 'color') || theme.muted;
@@ -314,6 +353,10 @@ async function main() {
     el('search').addEventListener('change', () => {
       const id = byLabel.get(el('search').value.trim());
       if (id) selectNode(id, true);
+      else {
+        const [first] = searchHits(el('search').value);
+        if (first) selectNode(first[1], true);
+      }
     });
 
     buildLabels();
