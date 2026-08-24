@@ -5,29 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>گراف متمم — نقشه پیوند نوشته‌ها</title>
   <style>
-    :root { --ink:#1e1e24; --muted:#6a6a78; --line:#e6e6ee; --accent:#6b7cff; }
+    :root, [data-theme="light"] {
+      --bg:#fafafc; --ink:#1e1e24; --muted:#6a6a78; --line:#e6e6ee; --accent:#6b7cff;
+      --panel-bg:rgba(255,255,255,.92); --field-bg:#fff; --field-border:#d9d9e3;
+      --hover:#eef0fb; --btn-bg:#fff; --glow:#fafafc; --shadow:0 6px 26px rgba(0,0,0,.08);
+      --label-ink:#2b2b34;
+    }
+    [data-theme="dark"] {
+      --bg:#14141a; --ink:#e6e6ef; --muted:#9494a6; --line:#2b2b36; --accent:#8b9bff;
+      --panel-bg:rgba(26,26,34,.92); --field-bg:#1f1f28; --field-border:#3a3a48;
+      --hover:#242435; --btn-bg:#1f1f28; --glow:#14141a; --shadow:0 6px 26px rgba(0,0,0,.45);
+      --label-ink:#d8d8e2;
+    }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; overflow: hidden;
-      font-family: Vazirmatn, Tahoma, "IRANSans", sans-serif; background: #fafafc; color: var(--ink); }
+      font-family: Vazirmatn, Tahoma, "IRANSans", sans-serif; background: var(--bg); color: var(--ink);
+      transition: background .2s, color .2s; }
+
+    .view { position: absolute; inset: 0; }
+    .view[hidden] { display: none; }
+
+    /* ---------- top bar: tab switcher + theme toggle ---------- */
+    #topbar {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6;
+      display: flex; gap: 8px; align-items: center;
+      background: var(--panel-bg); backdrop-filter: blur(8px);
+      border: 1px solid var(--line); border-radius: 12px; padding: 5px; box-shadow: var(--shadow);
+    }
+    .tabs { display: flex; gap: 4px; }
+    .tabs button {
+      padding: 6px 14px; border: none; background: transparent; color: var(--muted);
+      border-radius: 8px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    }
+    .tabs button:hover { color: var(--ink); }
+    .tabs button.on { background: var(--accent); color: #fff; }
+    #themeToggle {
+      width: 32px; height: 32px; border: 1px solid var(--field-border); background: var(--btn-bg);
+      color: var(--ink); border-radius: 9px; cursor: pointer; font-size: 15px; line-height: 1;
+    }
+    #themeToggle:hover { border-color: var(--accent); }
+
+    /* ---------- graph view ---------- */
     #graph { position: absolute; inset: 0; }
     #clusters { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
     .cluster-label {
       position: absolute; transform: translate(50%, -50%); white-space: nowrap;
-      font-weight: 700; color: #2b2b34; text-shadow: 0 0 4px #fafafc, 0 0 4px #fafafc, 0 0 8px #fafafc;
+      font-weight: 700; color: var(--label-ink);
+      text-shadow: 0 0 4px var(--glow), 0 0 4px var(--glow), 0 0 8px var(--glow);
       pointer-events: none; transition: opacity .2s;
     }
 
     #panel {
-      position: absolute; top: 14px; right: 14px; z-index: 5;
-      width: min(300px, 82vw); max-height: calc(100vh - 28px); overflow-y: auto;
-      background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
-      border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
-      box-shadow: 0 6px 26px rgba(0,0,0,.08);
+      position: absolute; top: 58px; right: 14px; z-index: 5;
+      width: min(300px, 82vw); max-height: calc(100vh - 72px); overflow-y: auto;
+      background: var(--panel-bg); backdrop-filter: blur(8px);
+      border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow);
     }
     #panel h1 { font-size: 15px; margin: 0 0 8px; }
     #status { font-size: 12px; color: var(--muted); margin-bottom: 10px; min-height: 16px; }
-    #search { width: 100%; padding: 8px 10px; border: 1px solid #d9d9e3; border-radius: 9px; font: inherit; outline: none; }
-    #search:focus { border-color: var(--accent); }
+    input[type=text], input.search {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--field-border); border-radius: 9px;
+      font: inherit; outline: none; background: var(--field-bg); color: var(--ink); }
+    input.search:focus { border-color: var(--accent); }
 
     details { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }
     summary { cursor: pointer; font-size: 13px; font-weight: 600; list-style: none; padding: 4px 0; user-select: none; }
@@ -36,77 +75,120 @@
     details:not([open]) summary::before { content: "▸"; }
 
     .row { margin: 9px 0; }
-    .row label { display: flex; justify-content: space-between; font-size: 12px; color: #444; margin-bottom: 3px; }
+    .row label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
     .row label .val { color: var(--accent); font-variant-numeric: tabular-nums; }
     input[type=range] { width: 100%; accent-color: var(--accent); }
     .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 9px 0; cursor: pointer; }
     .btns { display: flex; gap: 8px; margin-top: 10px; }
-    .btns button { flex: 1; padding: 7px 8px; border: 1px solid #d9d9e3; background: #fff; border-radius: 9px;
-      font: inherit; font-size: 12.5px; cursor: pointer; }
+    .btns button { flex: 1; padding: 7px 8px; border: 1px solid var(--field-border); background: var(--btn-bg);
+      color: var(--ink); border-radius: 9px; font: inherit; font-size: 12.5px; cursor: pointer; }
     .btns button:hover { border-color: var(--accent); color: var(--accent); }
     .btns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-    #hint { margin-top: 10px; font-size: 11px; color: #99a; line-height: 1.8; border-top: 1px solid var(--line); padding-top: 8px; }
+    #hint { margin-top: 10px; font-size: 11px; color: var(--muted); line-height: 1.8; border-top: 1px solid var(--line); padding-top: 8px; }
 
-    #selected { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
-    #selected .sel-title { font-size: 13px; font-weight: 700; line-height: 1.5; }
-    #selected .sel-title a, #selected li a.open { color: var(--accent); text-decoration: none; font-weight: 400; font-size: 11px; }
-    #selected .sel-sub { font-size: 11px; color: var(--muted); margin: 3px 0 6px; }
-    #selected ul { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
-    #selected li { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border-radius: 7px; cursor: pointer; font-size: 12px; }
-    #selected li:hover { background: #eef0fb; }
-    #selected li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-    #selected li .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #selected li a.open { flex: none; font-size: 13px; }
+    /* ---------- related-lessons block (shared by both views) ---------- */
+    .rel { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+    .rel .rel-title { font-size: 13px; font-weight: 700; line-height: 1.5; }
+    .rel .rel-title a, .rel li a.open { color: var(--accent); text-decoration: none; font-weight: 400; font-size: 11px; }
+    .rel .rel-sub { font-size: 11px; color: var(--muted); margin: 3px 0 6px; }
+    .rel ul { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+    .rel li { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+    .rel li:hover { background: var(--hover); }
+    .rel li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .rel li .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rel li a.open { flex: none; font-size: 13px; }
+
+    /* ---------- search (lite) view — for mobile & small screens ---------- */
+    #searchView { overflow-y: auto; background: var(--bg); }
+    .lite { max-width: 620px; margin: 0 auto; padding: 64px 16px 48px; }
+    .lite h1 { font-size: 18px; margin: 0 0 4px; }
+    .lite .sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+    .lite .search { font-size: 15px; padding: 11px 14px; }
+    #liteResults { list-style: none; margin: 10px 0 0; padding: 0; }
+    #liteResults li { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 9px;
+      cursor: pointer; font-size: 13.5px; }
+    #liteResults li:hover { background: var(--hover); }
+    #liteResults li .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    #liteResults li .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #liteResults .empty { color: var(--muted); font-size: 12.5px; padding: 10px; }
+    #liteSelected { margin-top: 14px; }
+    #liteSelected .rel { background: var(--panel-bg); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 14px; box-shadow: var(--shadow); }
+    #liteSelected .rel ul { max-height: none; }
+    #liteSelected .rel li { font-size: 13px; }
   </style>
 </head>
 <body>
-  <div id="graph"></div>
-  <div id="clusters"></div>
-  <div id="panel">
-    <h1>نقشه نوشته‌های متمم</h1>
-    <div id="status">در حال بارگذاری…</div>
-    <input id="search" list="nodes" placeholder="جستجوی عنوان نوشته…" autocomplete="off" />
-    <datalist id="nodes"></datalist>
-    <div id="selected" hidden></div>
-
-    <details open>
-      <summary>نیروها</summary>
-      <div class="row"><label>دافعه (پخش‌شدگی) <span class="val" id="v-repel"></span></label>
-        <input type="range" id="repel" min="1" max="1500" step="10" value="120"></div>
-      <div class="row"><label>جاذبهٔ مرکز <span class="val" id="v-gravity"></span></label>
-        <input type="range" id="gravity" min="0" max="10" step="0.1" value="1"></div>
-      <div class="row"><label>قدرت پیوندها <span class="val" id="v-link"></span></label>
-        <input type="range" id="link" min="0.2" max="3" step="0.1" value="1"></div>
-      <div class="row"><label>هم‌بستگی خوشه‌ها <span class="val" id="v-cohesion"></span></label>
-        <input type="range" id="cohesion" min="0" max="12" step="0.5" value="4"></div>
-      <div class="btns">
-        <button id="run">▶ اجرای شبیه‌سازی</button>
-        <button id="reset">بازنشانی</button>
-      </div>
-    </details>
-
-    <details open>
-      <summary>نمایش</summary>
-      <div class="row"><label>اندازهٔ گره‌ها <span class="val" id="v-size"></span></label>
-        <input type="range" id="nodeSize" min="0.3" max="3" step="0.1" value="1"></div>
-      <div class="row"><label>آستانهٔ نمایش برچسب <span class="val" id="v-label"></span></label>
-        <input type="range" id="labelThreshold" min="1" max="24" step="1" value="8"></div>
-      <div class="row"><label>پررنگی پیوندها <span class="val" id="v-edge"></span></label>
-        <input type="range" id="edgeOpacity" min="0" max="1" step="0.05" value="0.55"></div>
-      <label class="check"><input type="checkbox" id="colorClusters" checked> رنگ‌آمیزی بر اساس خوشه</label>
-      <label class="check"><input type="checkbox" id="clusterLabels" checked> نمایش نام خوشه‌ها</label>
-      <div class="row"><label>حداقل اندازهٔ خوشه برای برچسب <span class="val" id="v-clmin"></span></label>
-        <input type="range" id="clusterMin" min="3" max="60" step="1" value="15"></div>
-    </details>
-
-    <details>
-      <summary>فیلتر</summary>
-      <div class="row"><label>حداقل تعداد پیوند <span class="val" id="v-deg"></span></label>
-        <input type="range" id="minDegree" min="0" max="30" step="1" value="0"></div>
-    </details>
-
-    <div id="hint">حرکت روی گره: روشن‌شدن هم‌سایه‌ها · کلیک: رفتن به نوشته · نیروها را تغییر دهید تا چیدمان زنده بازآرایی شود</div>
+  <div id="topbar">
+    <div class="tabs">
+      <button data-tab="graph" class="on">نقشه</button>
+      <button data-tab="search">جستجو</button>
+    </div>
+    <button id="themeToggle" title="روشن/تاریک" aria-label="تغییر تم">🌙</button>
   </div>
+
+  <!-- ===== full graph view ===== -->
+  <div id="graphView" class="view">
+    <div id="graph"></div>
+    <div id="clusters"></div>
+    <div id="panel">
+      <h1>نقشه نوشته‌های متمم</h1>
+      <div id="status">در حال بارگذاری…</div>
+      <input id="search" class="search" list="nodes" placeholder="جستجوی عنوان نوشته…" autocomplete="off" />
+      <datalist id="nodes"></datalist>
+      <div id="selected" class="rel" hidden></div>
+
+      <details open>
+        <summary>نیروها</summary>
+        <div class="row"><label>دافعه (پخش‌شدگی) <span class="val" id="v-repel"></span></label>
+          <input type="range" id="repel" min="1" max="1500" step="10" value="120"></div>
+        <div class="row"><label>جاذبهٔ مرکز <span class="val" id="v-gravity"></span></label>
+          <input type="range" id="gravity" min="0" max="10" step="0.1" value="1"></div>
+        <div class="row"><label>قدرت پیوندها <span class="val" id="v-link"></span></label>
+          <input type="range" id="link" min="0.2" max="3" step="0.1" value="1"></div>
+        <div class="row"><label>هم‌بستگی خوشه‌ها <span class="val" id="v-cohesion"></span></label>
+          <input type="range" id="cohesion" min="0" max="12" step="0.5" value="4"></div>
+        <div class="btns">
+          <button id="run">▶ اجرای شبیه‌سازی</button>
+          <button id="reset">بازنشانی</button>
+        </div>
+      </details>
+
+      <details open>
+        <summary>نمایش</summary>
+        <div class="row"><label>اندازهٔ گره‌ها <span class="val" id="v-size"></span></label>
+          <input type="range" id="nodeSize" min="0.3" max="3" step="0.1" value="1"></div>
+        <div class="row"><label>آستانهٔ نمایش برچسب <span class="val" id="v-label"></span></label>
+          <input type="range" id="labelThreshold" min="1" max="24" step="1" value="8"></div>
+        <div class="row"><label>پررنگی پیوندها <span class="val" id="v-edge"></span></label>
+          <input type="range" id="edgeOpacity" min="0" max="1" step="0.05" value="0.55"></div>
+        <label class="check"><input type="checkbox" id="colorClusters" checked> رنگ‌آمیزی بر اساس خوشه</label>
+        <label class="check"><input type="checkbox" id="clusterLabels" checked> نمایش نام خوشه‌ها</label>
+        <div class="row"><label>حداقل اندازهٔ خوشه برای برچسب <span class="val" id="v-clmin"></span></label>
+          <input type="range" id="clusterMin" min="3" max="60" step="1" value="15"></div>
+      </details>
+
+      <details>
+        <summary>فیلتر</summary>
+        <div class="row"><label>حداقل تعداد پیوند <span class="val" id="v-deg"></span></label>
+          <input type="range" id="minDegree" min="0" max="30" step="1" value="0"></div>
+      </details>
+
+      <div id="hint">حرکت روی گره: روشن‌شدن هم‌سایه‌ها · کلیک: انتخاب نوشته · نیروها را تغییر دهید تا چیدمان زنده بازآرایی شود</div>
+    </div>
+  </div>
+
+  <!-- ===== lite search view (mobile-friendly) ===== -->
+  <div id="searchView" class="view" hidden>
+    <div class="lite">
+      <h1>جستجوی نوشته‌های متمم</h1>
+      <div class="sub" id="liteSub"></div>
+      <input id="searchLite" class="search" type="text" placeholder="عنوان نوشته را بنویسید…" autocomplete="off" />
+      <ul id="liteResults"></ul>
+      <div id="liteSelected"></div>
+    </div>
+  </div>
+
   <script src="./app.js"></script>
 </body>
 </html>
