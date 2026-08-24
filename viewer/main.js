@@ -9,6 +9,7 @@
 
 import Graph from 'graphology';
 import Sigma from 'sigma';
+import { NodePointProgram, drawDiscNodeHover, drawDiscNodeLabel } from 'sigma/rendering';
 import FA2Layout from 'graphology-layout-forceatlas2/worker';
 
 const el = (id) => document.getElementById(id);
@@ -186,8 +187,14 @@ async function main() {
     sigmaReady = true;
 
     renderer = new Sigma(graph, container, {
-      labelRenderedSizeThreshold: 8,
-      labelFont: 'Vazirmatn, Tahoma, sans-serif',
+      nodeProgramClasses: { point: NodePointProgram },
+      defaultNodeType: 'point',
+      defaultDrawNodeLabel: drawDiscNodeLabel,
+      defaultDrawNodeHover: drawDiscNodeHover,
+      labelDensity: 0.07,
+      labelGridCellSize: 60,
+      labelRenderedSizeThreshold: 15,
+      labelFont: 'Lato, sans-serif',
       labelColor: { color: theme.label },
       defaultEdgeColor: `rgba(150,150,165,${state.edgeOpacity})`,
       zIndex: true,
@@ -203,6 +210,7 @@ async function main() {
         else if (graph.areNeighbors(state.active, node)) { res.zIndex = 1; }
         else { res.color = theme.dim; res.label = ''; res.zIndex = 0; }
       }
+      if (a.category) res.type = 'point';
       return res;
     });
     renderer.setSetting('edgeReducer', (edge, a) => {

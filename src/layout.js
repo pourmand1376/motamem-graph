@@ -7,7 +7,7 @@
 // purely by their links, so the few main clusters stand out. Hubs are removed at the end.
 //
 // Usage:  node src/layout.js
-//   TOP_CLUSTERS=24  HUB_WEIGHT=4  FA2_ITERS=800  node src/layout.js
+//   TOP_CLUSTERS=24  HUB_WEIGHT=10  REAL_EDGE_WEIGHT=0.35  FA2_ITERS=1600  node src/layout.js
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -19,28 +19,43 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const IN = path.join(ROOT, 'data', 'graph-raw.json');
 const OUT = path.join(ROOT, 'public', 'graph.json');
 
-const ITERATIONS = Number(process.env.FA2_ITERS ?? 800);
+const ITERATIONS = Number(process.env.FA2_ITERS ?? 1600);
 const MIN_HUB = Number(process.env.MIN_HUB ?? 3);   // categories with >= this many posts get a cluster hub
-const HUB_WEIGHT = Number(process.env.HUB_WEIGHT ?? 4);
+const HUB_WEIGHT = Number(process.env.HUB_WEIGHT ?? 10);
+const REAL_EDGE_WEIGHT = Number(process.env.REAL_EDGE_WEIGHT ?? 0.35);
 const MUTED = '#c9c9d2';
 
-// N visually distinct colors: evenly spaced hues, alternating lightness so neighbors differ.
+// A high-contrast qualitative palette for the largest clusters.
+// Smaller clusters reuse these hues with light/dark variants so the top clusters
+// stay visually separated instead of collapsing into similar neighboring hues.
+const BASE_COLORS = [
+  '#e45756', '#4c78a8', '#54a24b', '#f58518', '#b279a2', '#72b7b2',
+  '#eeca3b', '#ff9da6', '#9d755d', '#bab0ac', '#1f77b4', '#2ca02c',
+  '#d62728', '#9467bd', '#8c564b', '#17becf', '#bcbd22', '#ff7f0e',
+  '#7f7f7f', '#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e',
+];
+
 function palette(n) {
   const out = [];
   for (let i = 0; i < n; i++) {
-    const hue = (i * 360) / n;
-    const light = i % 2 ? 54 : 63;
-    out.push(hslToHex(hue, 66, light));
+    const base = BASE_COLORS[i % BASE_COLORS.length];
+    const cycle = Math.floor(i / BASE_COLORS.length);
+    out.push(tint(base, cycle));
   }
   return out;
 }
-function hslToHex(h, s, l) {
-  s /= 100; l /= 100;
-  const k = (x) => (x + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (x) => l - a * Math.max(-1, Math.min(k(x) - 3, Math.min(9 - k(x), 1)));
-  const to = (x) => Math.round(255 * f(x)).toString(16).padStart(2, '0');
-  return `#${to(0)}${to(8)}${to(4)}`;
+function tint(hex, cycle) {
+  if (cycle === 0) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const mix = cycle % 2 ? 0.18 + Math.min(0.04 * cycle, 0.16) : -0.12 - Math.min(0.03 * cycle, 0.12);
+  const blend = (v) => {
+    const target = mix > 0 ? 255 : 0;
+    return Math.round(v + (target - v) * Math.abs(mix));
+  };
+  return `#${[blend(r), blend(g), blend(b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 const round = (n) => Math.round(n * 1000) / 1000;
 
@@ -53,7 +68,7 @@ async function main() {
   }
   for (const e of raw.edges) {
     if (graph.hasNode(e.source) && graph.hasNode(e.target) && e.source !== e.target) {
-      graph.mergeEdge(e.source, e.target, { weight: 1 });
+      graph.mergeEdge(e.source, e.target, { weight: REAL_EDGE_WEIGHT });
     }
   }
 
@@ -97,7 +112,7 @@ async function main() {
   main.forEach((c, i) => {
     // seed hubs on a wide circle so clusters start separated
     const ang = (i / main.length) * 2 * Math.PI;
-    graph.addNode(HUB(c), { x: 800 * Math.cos(ang), y: 800 * Math.sin(ang), size: 0, hub: true });
+    graph.addNode(HUB(c), { x: 450 * Math.cos(ang), y: 450 * Math.sin(ang), size: 0, hub: true });
   });
   const mainSet = new Set(main);
   graph.forEachNode((node, attr) => {
@@ -106,12 +121,12 @@ async function main() {
     const c = attr.category;
     if (c && mainSet.has(c)) {
       const h = graph.getNodeAttributes(HUB(c));
-      attr.x = h.x + (hash(node) % 100) - 50;
-      attr.y = h.y + (hash(node + 'y') % 100) - 50;
+      attr.x = h.x + (hash(node) % 40) - 20;
+      attr.y = h.y + (hash(node + 'y') % 40) - 20;
       graph.addEdge(node, HUB(c), { weight: HUB_WEIGHT });
     } else {
-      attr.x = (hash(node) % 200) - 100;
-      attr.y = (hash(node + 'y') % 200) - 100;
+      attr.x = (hash(node) % 80) - 40;
+      attr.y = (hash(node + 'y') % 80) - 40;
     }
   });
 
