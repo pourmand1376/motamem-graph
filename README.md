@@ -87,19 +87,14 @@ repository itself stays source-only (the crawl cache and generated artifacts are
 ### Manual rebuild
 
 A GitHub Actions workflow (`.github/workflows/rebuild.yml`) rebuilds the graph **on demand**
-(*Actions → Rebuild graph → Run workflow*):
+(*Actions → Rebuild graph → Run workflow*). Each run fetches from Wayback fresh (no HTML
+cache between runs), then:
 
-1. Restores the HTML cache from `cache.tar.gz` on the `data-v1` release (skips a full re-crawl)
-2. Re-runs enumerate → fetch → parse → layout → viewer
-3. Uploads fresh `graph.json` / `graph-raw.json` / `urls.json` / `cache.tar.gz` to `data-v1`
-4. Redeploys GitHub Pages
+1. enumerate → fetch → parse → layout → viewer
+2. Uploads fresh `graph.json` / `graph-raw.json` / `urls.json` to `data-v1`
+3. Redeploys GitHub Pages
 
-First time: either wait for a cold-start run (full Wayback fetch, can take hours) or seed the
-cache once from a machine that already has `cache/`:
-
-```bash
-just publish-data   # uploads data + packed cache to the data-v1 release
-```
+A full fetch of ~4.8k pages can take a while — leave the job running until it finishes.
 
 ## Tech stack
 

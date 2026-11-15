@@ -1,10 +1,8 @@
 name: Rebuild graph
 
-# Manual trigger: re-enumerate Wayback snapshots, fetch any new/missing pages,
+# Manual trigger: re-enumerate Wayback snapshots, fetch archived pages,
 # rebuild the graph, refresh the data-v1 release, and redeploy GitHub Pages.
-#
-# The HTML cache (~1 GB) is kept as cache.tar.gz on the same release so re-runs
-# only download new posts instead of re-fetching ~4.8k pages every time.
+# Each run fetches from Wayback fresh — no HTML cache is persisted between runs.
 
 on:
   workflow_dispatch:
@@ -35,22 +33,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Restore HTML cache from the data release
-        run: |
-          mkdir -p cache
-          if gh release download "$DATA_TAG" --repo "$GITHUB_REPOSITORY" \
-               --pattern 'cache.tar.gz' --dir /tmp --clobber; then
-            tar -xzf /tmp/cache.tar.gz -C .
-            echo "Restored $(find cache -type f | wc -l | tr -d ' ') cached pages"
-            rm -f /tmp/cache.tar.gz
-          else
-            echo "No cache.tar.gz on $DATA_TAG yet — cold start (full Wayback fetch)"
-          fi
-
       - name: Enumerate posts from Wayback CDX
         run: npm run enumerate
 
-      - name: Fetch missing archived HTML
+      - name: Fetch archived HTML
         run: npm run fetch
 
       - name: Parse editorial graph
@@ -62,18 +48,12 @@ jobs:
       - name: Build viewer bundle
         run: npm run viewer:build
 
-      - name: Pack HTML cache for next run
-        run: |
-          tar -czf /tmp/cache.tar.gz cache
-          ls -lh /tmp/cache.tar.gz
-
       - name: Publish data release assets
         run: |
           gh release upload "$DATA_TAG" \
             public/graph.json \
             data/graph-raw.json \
             data/urls.json \
-            /tmp/cache.tar.gz \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
 

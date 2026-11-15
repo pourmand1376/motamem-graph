@@ -51,25 +51,3 @@ clean:
 # Remove everything generated, including the archived-page cache
 clean-all: clean
     rm -rf cache
-
-# Upload graph data + packed HTML cache to the data-v1 GitHub Release
-# (seeds CI so the monthly rebuild only fetches new posts)
-data_tag := "data-v1"
-publish-data:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    test -f public/graph.json || { echo "missing public/graph.json — run just build / just regraph first"; exit 1; }
-    test -f data/graph-raw.json || { echo "missing data/graph-raw.json"; exit 1; }
-    test -f data/urls.json || { echo "missing data/urls.json"; exit 1; }
-    test -d cache || { echo "missing cache/ — run just fetch first"; exit 1; }
-    echo "packing cache/ …"
-    tar -czf /tmp/cache.tar.gz cache
-    ls -lh /tmp/cache.tar.gz
-    gh release upload "{{data_tag}}" \
-      public/graph.json \
-      data/graph-raw.json \
-      data/urls.json \
-      /tmp/cache.tar.gz \
-      --clobber
-    rm -f /tmp/cache.tar.gz
-    echo "published to release {{data_tag}}"
