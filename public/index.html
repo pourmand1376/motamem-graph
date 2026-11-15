@@ -104,18 +104,19 @@
     .lite h1 { font-size: 18px; margin: 0 0 4px; }
     .lite .sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
     .lite .search { font-size: 15px; padding: 11px 14px; }
-    #liteResults { list-style: none; margin: 10px 0 0; padding: 0; }
-    #liteResults li { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 9px;
+    #liteResults { margin: 10px 0 0; }
+    #liteResults .hit { border-radius: 12px; }
+    #liteResults .hit-row { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 9px;
       cursor: pointer; font-size: 13.5px; }
-    #liteResults li:hover { background: var(--hover); }
-    #liteResults li .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-    #liteResults li .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #liteResults .hit-row:hover { background: var(--hover); }
+    #liteResults .hit.active > .hit-row { background: var(--hover); }
+    #liteResults .hit .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    #liteResults .hit .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #liteResults .empty { color: var(--muted); font-size: 12.5px; padding: 10px; }
-    #liteSelected { margin-top: 14px; }
-    #liteSelected .rel { background: var(--panel-bg); border: 1px solid var(--line); border-radius: 14px;
-      padding: 12px 14px; box-shadow: var(--shadow); }
-    #liteSelected .rel ul { max-height: none; }
-    #liteSelected .rel li { font-size: 13px; }
+    #liteResults .hit > .rel { margin: 0 0 10px; background: var(--panel-bg); border: 1px solid var(--line);
+      border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
+    #liteResults .hit > .rel ul { max-height: min(280px, 40vh); }
+    #liteResults .hit > .rel li { font-size: 13px; }
   </style>
 </head>
 <body>
@@ -184,8 +185,7 @@
       <h1>جستجوی نوشته‌های متمم</h1>
       <div class="sub" id="liteSub"></div>
       <input id="searchLite" class="search" type="text" placeholder="عنوان نوشته را بنویسید…" autocomplete="off" />
-      <ul id="liteResults"></ul>
-      <div id="liteSelected"></div>
+      <div id="liteResults"></div>
     </div>
   </div>
 

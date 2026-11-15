@@ -148,28 +148,52 @@ async function main() {
 
   // ====================================================================
   // Lite search view — works without Sigma so it stays cheap on mobile.
+  // Related links render directly under the clicked hit (not at the page end).
   // ====================================================================
   el('liteSub').textContent = baseStatus;
   const liteResults = el('liteResults');
-  const liteSelected = el('liteSelected');
+
+  function clearLiteRelated() {
+    liteResults.querySelectorAll('.hit.active').forEach((hit) => {
+      hit.classList.remove('active');
+      hit.querySelector(':scope > .rel')?.remove();
+    });
+  }
 
   function showLite(id) {
-    liteSelected.innerHTML = `<div class="rel"></div>`;
-    const rel = liteSelected.firstElementChild;
+    const encoded = encodeURIComponent(id);
+    let hit = [...liteResults.querySelectorAll('.hit[data-id]')]
+      .find((h) => h.getAttribute('data-id') === encoded);
+    // Related-item clicks may point at a node that isn't in the current hit list —
+    // keep the panel under the already-open hit in that case.
+    if (!hit) hit = liteResults.querySelector('.hit.active');
+    if (!hit) return;
+
+    clearLiteRelated();
+    hit.classList.add('active');
+
+    const rel = document.createElement('div');
+    rel.className = 'rel';
     rel.innerHTML = relatedHTML(id);
-    wireRelated(rel, (n) => { showLite(n); liteSelected.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    hit.appendChild(rel);
+    wireRelated(rel, (n) => showLite(n));
+    rel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+
   function renderLiteResults(q) {
     const hits = searchHits(q).slice(0, 40);
     if (!normalizeSearchText(q)) { liteResults.innerHTML = ''; return; }
-    if (!hits.length) { liteResults.innerHTML = '<li class="empty">نوشته‌ای پیدا نشد.</li>'; return; }
+    if (!hits.length) { liteResults.innerHTML = '<div class="empty">نوشته‌ای پیدا نشد.</div>'; return; }
     liteResults.innerHTML = hits.map(([label, id]) => {
       const color = graph.getNodeAttribute(id, 'color') || theme.muted;
-      return `<li data-id="${encodeURIComponent(id)}"><span class="dot" style="background:${color}"></span>`
-        + `<span class="t" title="${esc(label)}">${esc(label)}</span></li>`;
+      return `<div class="hit" data-id="${encodeURIComponent(id)}"><div class="hit-row">`
+        + `<span class="dot" style="background:${color}"></span>`
+        + `<span class="t" title="${esc(label)}">${esc(label)}</span>`
+        + `</div></div>`;
     }).join('');
-    liteResults.querySelectorAll('li[data-id]').forEach((li) =>
-      li.addEventListener('click', () => showLite(decodeURIComponent(li.getAttribute('data-id')))));
+    liteResults.querySelectorAll('.hit[data-id]').forEach((hit) =>
+      hit.querySelector('.hit-row').addEventListener('click', () =>
+        showLite(decodeURIComponent(hit.getAttribute('data-id')))));
   }
   el('searchLite').addEventListener('input', (e) => renderLiteResults(e.target.value));
 
