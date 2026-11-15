@@ -1,7 +1,7 @@
 name: Rebuild graph
 
 # Manual trigger: re-enumerate Wayback snapshots, fetch archived pages,
-# rebuild the graph, refresh the data-v1 release, and redeploy GitHub Pages.
+# rebuild the graph, create a new dated data release, and redeploy GitHub Pages.
 # Each run fetches from Wayback fresh — no HTML cache is persisted between runs.
 
 on:
@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 360
     env:
       GH_TOKEN: ${{ github.token }}
-      DATA_TAG: data-v1
     steps:
       - uses: actions/checkout@v4
 
@@ -48,14 +47,20 @@ jobs:
       - name: Build viewer bundle
         run: npm run viewer:build
 
-      - name: Publish data release assets
+      - name: Create new data release
+        id: release
         run: |
-          gh release upload "$DATA_TAG" \
+          TAG="data-$(date -u +%Y%m%d-%H%M%S)"
+          NOTES="Rebuilt from Wayback on $(date -u -Iseconds)."
+          gh release create "$TAG" \
             public/graph.json \
             data/graph-raw.json \
             data/urls.json \
             --repo "$GITHUB_REPOSITORY" \
-            --clobber
+            --title "Graph data ($TAG)" \
+            --notes "$NOTES" \
+            --latest
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-pages-artifact@v3
         with:

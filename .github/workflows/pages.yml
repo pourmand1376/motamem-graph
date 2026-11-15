@@ -19,8 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      # tag of the release that holds graph.json
-      DATA_TAG: data-v1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,8 +28,19 @@ jobs:
       - run: npm ci
       - name: Build viewer bundle
         run: npm run viewer:build
-      - name: Pull graph.json from the data release
-        run: gh release download "$DATA_TAG" --repo "$GITHUB_REPOSITORY" --pattern graph.json --dir public --clobber
+      - name: Pull graph.json from the latest data release
+        run: |
+          # Prefer the GitHub "latest" release; fall back to newest data-* tag.
+          if ! gh release download --repo "$GITHUB_REPOSITORY" --pattern graph.json --dir public --clobber; then
+            TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
+              --jq '[.[].tagName | select(startswith("data-"))][0]')
+            if [ -z "$TAG" ]; then
+              echo "No data-* release found" >&2
+              exit 1
+            fi
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern graph.json --dir public --clobber
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

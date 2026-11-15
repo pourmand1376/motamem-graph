@@ -79,9 +79,10 @@ download). Tuning knobs for the build layout are env vars: `MIN_HUB`, `HUB_WEIGH
 
 ## Data & hosting
 
-The generated graph (`graph.json`) and the intermediate data are published as a
-[GitHub Release](https://github.com/pourmand1376/motamem-graph/releases). The GitHub Pages site
-pulls `graph.json` from the release at deploy time and serves it alongside the viewer, so the
+The generated graph (`graph.json`) and the intermediate data are published as
+[GitHub Releases](https://github.com/pourmand1376/motamem-graph/releases) (one dated
+`data-YYYYMMDD-HHMMSS` release per rebuild). The GitHub Pages site pulls `graph.json`
+from the **latest** release at deploy time and serves it alongside the viewer, so the
 repository itself stays source-only (the crawl cache and generated artifacts are git-ignored).
 
 ### Manual rebuild
@@ -91,8 +92,8 @@ A GitHub Actions workflow (`.github/workflows/rebuild.yml`) rebuilds the graph *
 cache between runs), then:
 
 1. enumerate → fetch → parse → layout → viewer
-2. Uploads fresh `graph.json` / `graph-raw.json` / `urls.json` to `data-v1`
-3. Redeploys GitHub Pages
+2. Creates a new release (`data-YYYYMMDD-HHMMSS`) with `graph.json` / `graph-raw.json` / `urls.json` and marks it latest
+3. Redeploys GitHub Pages (which points at that latest release)
 
 A full fetch of ~4.8k pages can take a while — leave the job running until it finishes.
 
