@@ -84,10 +84,10 @@ The generated graph (`graph.json`) and the intermediate data are published as a
 pulls `graph.json` from the release at deploy time and serves it alongside the viewer, so the
 repository itself stays source-only (the crawl cache and generated artifacts are git-ignored).
 
-### Monthly auto-update
+### Manual rebuild
 
-A GitHub Actions workflow (`.github/workflows/rebuild.yml`) runs on the **1st of each month**
-(and on demand via *Actions → Rebuild graph monthly → Run workflow*):
+A GitHub Actions workflow (`.github/workflows/rebuild.yml`) rebuilds the graph **on demand**
+(*Actions → Rebuild graph → Run workflow*):
 
 1. Restores the HTML cache from `cache.tar.gz` on the `data-v1` release (skips a full re-crawl)
 2. Re-runs enumerate → fetch → parse → layout → viewer
