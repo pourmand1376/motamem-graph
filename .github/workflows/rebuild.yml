@@ -1,0 +1,95 @@
+name: Rebuild graph monthly
+
+# Re-enumerate Wayback snapshots, fetch any new/missing pages, rebuild the graph,
+# refresh the data-v1 release, and redeploy GitHub Pages.
+#
+# The HTML cache (~1 GB) is kept as cache.tar.gz on the same release so monthly
+# runs only download new posts instead of re-fetching ~4.8k pages every time.
+
+on:
+  schedule:
+    # 1st of each month at 06:00 UTC
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: rebuild
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DATA_TAG: data-v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore HTML cache from the data release
+        run: |
+          mkdir -p cache
+          if gh release download "$DATA_TAG" --repo "$GITHUB_REPOSITORY" \
+               --pattern 'cache.tar.gz' --dir /tmp --clobber; then
+            tar -xzf /tmp/cache.tar.gz -C .
+            echo "Restored $(find cache -type f | wc -l | tr -d ' ') cached pages"
+            rm -f /tmp/cache.tar.gz
+          else
+            echo "No cache.tar.gz on $DATA_TAG yet — cold start (full Wayback fetch)"
+          fi
+
+      - name: Enumerate posts from Wayback CDX
+        run: npm run enumerate
+
+      - name: Fetch missing archived HTML
+        run: npm run fetch
+
+      - name: Parse editorial graph
+        run: npm run parse
+
+      - name: Bake ForceAtlas2 layout
+        run: npm run layout
+
+      - name: Build viewer bundle
+        run: npm run viewer:build
+
+      - name: Pack HTML cache for next run
+        run: |
+          tar -czf /tmp/cache.tar.gz cache
+          ls -lh /tmp/cache.tar.gz
+
+      - name: Publish data release assets
+        run: |
+          gh release upload "$DATA_TAG" \
+            public/graph.json \
+            data/graph-raw.json \
+            data/urls.json \
+            /tmp/cache.tar.gz \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: rebuild
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

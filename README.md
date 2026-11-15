@@ -84,6 +84,23 @@ The generated graph (`graph.json`) and the intermediate data are published as a
 pulls `graph.json` from the release at deploy time and serves it alongside the viewer, so the
 repository itself stays source-only (the crawl cache and generated artifacts are git-ignored).
 
+### Monthly auto-update
+
+A GitHub Actions workflow (`.github/workflows/rebuild.yml`) runs on the **1st of each month**
+(and on demand via *Actions → Rebuild graph monthly → Run workflow*):
+
+1. Restores the HTML cache from `cache.tar.gz` on the `data-v1` release (skips a full re-crawl)
+2. Re-runs enumerate → fetch → parse → layout → viewer
+3. Uploads fresh `graph.json` / `graph-raw.json` / `urls.json` / `cache.tar.gz` to `data-v1`
+4. Redeploys GitHub Pages
+
+First time: either wait for a cold-start run (full Wayback fetch, can take hours) or seed the
+cache once from a machine that already has `cache/`:
+
+```bash
+just publish-data   # uploads data + packed cache to the data-v1 release
+```
+
 ## Tech stack
 
 Node.js · [cheerio](https://cheerio.js.org) (HTML parsing) ·
